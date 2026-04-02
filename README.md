@@ -19,7 +19,7 @@ Lightning fast type-ahead heuristic search for in-memory data-sets.
 | Partial-token match chain-terminator | (chainTextLen)^2\*100,000\*searchTokenLen/itemTokenLen |
 | Other full-token matches | (tokenLen)^2\*10,000 |
 | Regular partial-token matches | (tokenLen)^2\*1,000\*searchTokenLen/itemTokenLen |
-| Partial-token matches not already matched as full tokens | (tokenLen)^2\*100\*searchTokenLen/itemTokenLen |
+| Partial-token matches that separately matched as full tokens | (tokenLen)^2\*100\*searchTokenLen/itemTokenLen |
 
 ## TODO
 - Make the search cache update-friendly (eliminate dependence on pointers that may be invalidated by updates)

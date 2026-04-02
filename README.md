@@ -27,7 +27,9 @@ Lightning fast type-ahead heuristic search for in-memory data-sets.
 - Create additional tokens around the caret-position (blinking cursor)
 - Gather some example cases for special characters (e.g. \`\~\!\@\#\$\%\^\&\*\(\)\-\_\=\+\[\]\{\}\;\:\'\"\,\.\<\>\/\?), decide what search rankings should look like & how to achieve that
 - Opt-in support for logic accounting for custom character codes (e.g. <02> which maps to a particular control character and partials thereof "<", "<0", "<02")
-- Unit tests
+- Unit tests (correct search rankings)
+- Performance tests (cache built <1000ms, search/update ops <25ms)
+- Use performance tests to help guide investigation (e.g. how big of a data set can linear/regex approaches handle while still coming in under-time)
 - Perhaps add a preference for rarer search tokens (e.g. if "the" occurs 100 times in the search set and "fae" occurs twice, a match on "fae" should be worth more than a match on "the") 
 - Perhaps add a preference for matching tokens earlier in the item
 - Perhaps support for different logic for small and large search sets (e.g. linear/regex search is doable for 200 strings, not necessarily 50,000 strings, so maybe pickup all partial matches in smaller cases not just prefix-partials)

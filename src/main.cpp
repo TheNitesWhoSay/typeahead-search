@@ -9,6 +9,7 @@ int main()
 {
     search::strings test {};
     test.load(example_data::sc_unit_names);
+    //test.load({"Zerg Zergling", "Zerg Egg"});
     std::cout << "\n----------\n";
     while ( true )
     {

@@ -3,7 +3,8 @@
   "name": "heuristic-search",
   "version": "0.1.0",
   "dependencies": [
-    "icu"
+    "icu",
+    "gtest"
   ],
   "builtin-baseline": "89157a574475cccd1333e1530d66c786309c950f"
 }

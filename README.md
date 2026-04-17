@@ -22,11 +22,14 @@ Lightning fast type-ahead heuristic search for in-memory data-sets.
 | Partial-token matches that separately matched as full tokens | (tokenLen)^2\*100\*searchTokenLen/itemTokenLen |
 
 ## TODO
-- Make the search cache update-friendly (eliminate dependence on pointers that may be invalidated by updates)
+
+- [Done] Make the search cache update-friendly (eliminate dependence on pointers that may be invalidated by updates)
+- Make the actual cache update logic
 - Document the cache data, cache-build logic, cache-update logic & search logic
 - Create additional tokens around the caret-position (blinking cursor)
 - Gather some example cases for special characters (e.g. \`\~\!\@\#\$\%\^\&\*\(\)\-\_\=\+\[\]\{\}\;\:\'\"\,\.\<\>\/\?), decide what search rankings should look like & how to achieve that
 - Opt-in support for logic accounting for custom character codes (e.g. <02> which maps to a particular control character and partials thereof "<", "<0", "<02")
+- Check that scoring for duplicated full-tokens in items is sensible
 - Unit tests (correct search rankings)
 - Performance tests (cache built <1000ms, search/update ops <25ms)
 - Use performance tests to help guide investigation (e.g. how big of a data set can linear/regex approaches handle while still coming in under-time)

@@ -1,4 +1,5 @@
 #pragma once
+#include <slotmap/slotmap.h>
 #include <unicode/ustring.h>
 #include <algorithm>
 #include <cctype>
@@ -80,40 +81,60 @@ namespace search
 
     struct strings
     {
+        static constexpr std::hash<std::string_view> get_hash {};
+        
+        using item_key_type = std::uint64_t;
+        using token_key_type = std::uint64_t;
+
         struct item_type
         {
-            std::string regular = "";
-            std::string lowercase = "";
-            std::size_t token_count = 0;
+            std::string base_text = "";
+            std::string lowercase = ""; // TODO: this is used by *search tokens* and once in the result renderer
+            std::uint32_t token_count = 0;
             std::size_t index = 0;
         };
-        std::vector<item_type> items;
+
+        struct search_token : item_type
+        {
+            std::string lowercase = "";
+        };
 
         struct token_type
         {
             struct owner
             {
-                std::uint32_t item_index = 0; // Index of searchable items
+                item_key_type item_key {}; // Index of searchable items
                 std::uint32_t item_token_index = 0; // Index of this token within the searchable item
             };
 
-            std::string_view text = "";
+            std::string text {};
             std::vector<owner> owners {};
         };
 
-        // TODO: pull tokens out of the map and into a list or vec<ptr> for stability when updating the map
-        std::unordered_multimap<std::size_t, token_type> token_map {}; // item_token_hash -> token
+        slot_map<item_type> items {};
+        slot_map<token_type> tokens {};
 
-        static constexpr std::hash<std::string_view> get_hash {};
+        std::unordered_multimap<std::size_t, token_key_type> token_map {}; // map token hash -> token key
 
-        std::array<std::unordered_map<std::size_t, std::vector<const token_type*>>, max_prefix_size> prefix_lookup {}; // [i] = prefixes of length i+1
+        // [i] = prefixes of length i+1, map prefix value (codepoints mapped to integer) -> vector of token keys
+        std::array<std::unordered_map<std::size_t, std::vector<token_key_type>>, max_prefix_size> prefix_lookup {};
+
+        // TODO: the prefix_lookup vector might be better as a self-managed linked-list given the relative rarity of "token collisions"
+        // vector is 24 bytes (and then ~0 wasted for additional elements)
+        // 1-elem linked list (usually expected) = 8 bytes
+        // 2-elem = 16 bytes
+        // 3-elem = 24 bytes
 
         void load_prefixes()
         {
-            for ( const auto & entry : token_map )
+            const auto token_count = tokens.size();
+            const auto & token_values = tokens.unordered_data();
+            const auto & keys = tokens.data_keys();
+            for ( std::size_t key_index=0; key_index<token_count; ++key_index)
             {
-                const token_type* token = &entry.second;
-                const std::string_view & token_text = token->text;
+                const auto token_key = keys[key_index];
+                const token_type & token = token_values[key_index];
+                std::string_view token_text = token.text;
                 std::size_t token_text_size = token_text.size();
                 if ( token_text_size > 1 ) // tokens of size 1 or 0 have no prefix
                 {
@@ -125,9 +146,9 @@ namespace search
                         std::size_t prefix = prefix_value(std::string_view(&token_text[0], prefix_size));
                         auto found = prefix_map.find(prefix);
                         if ( found != prefix_map.end() )
-                            found->second.push_back(token);
+                            found->second.push_back(token_key);
                         else
-                            prefix_map.emplace(prefix, std::vector<const token_type*>{token});
+                            prefix_map.emplace(prefix, std::vector<token_key_type>{token_key});
                     }
                 }
             }
@@ -143,23 +164,25 @@ namespace search
                 for ( const auto & entry : prefix_map )
                 {
                     const auto & tokens = entry.second;
-                    const token_type* first_token = tokens.front();
-                    std::string_view prefix(&first_token->text[0], std::min(prefix_size, first_token->text.size()));
+                    token_key_type first_token_key = tokens.front();
+                    const token_type & first_token = this->tokens[first_token_key];
+                    std::string_view prefix(&first_token.text[0], std::min(prefix_size, first_token.text.size()));
                     std::cout << "  \"" << prefix << "\": {\n";
-                    for ( const token_type* token : tokens )
+                    for ( token_key_type token_key : tokens )
                     {
-                        const auto & owners = token->owners;
-                        std::cout << "    \"" << token->text << "\": { ";
+                        const token_type & token = this->tokens[token_key];
+                        const auto & owners = token.owners;
+                        std::cout << "    \"" << token.text << "\": { ";
                         bool first = true;
                         for ( const auto & owner : owners )
                         {
                             if ( first )
                             {
-                                std::cout << "(" << owner.item_index << ":" << owner.item_token_index << ")";
+                                std::cout << "(" << owner.item_key << ":" << owner.item_token_index << ")";
                                 first = false;
                             }
                             else
-                                std::cout << ", (" << owner.item_index << ":" << owner.item_token_index << ")";
+                                std::cout << ", (" << owner.item_key << ":" << owner.item_token_index << ")";
                         }
                         std::cout << " },\n";
                     }
@@ -171,27 +194,30 @@ namespace search
 
         void load(const std::vector<std::string> & new_items)
         {
+            this->items.clear();
+            this->tokens.clear();
+            this->token_map.clear();
+
             std::size_t item_count = static_cast<std::size_t>(new_items.size());
-            this->items.assign(item_count, {});
+            this->items.reserve(item_count);
             icux::case_converter case_conv {};
-            for ( std::size_t i=0; i<item_count; ++i )
+            std::size_t item_index = 0;
+            for ( const std::string & item_text : new_items )
             {
-                this->items[i].regular = new_items[i];
-                this->items[i].lowercase = case_conv.to_lower(new_items[i]);
-                this->items[i].index = i;
-            }
+                item_key_type item_key = this->items.push_back(item_type {
+                    .base_text = item_text,
+                    .lowercase = case_conv.to_lower(item_text),
+                    .index = item_index
+                });
+                item_type & item = this->items[item_key];
 
-            this->token_map = {};
-
-            for ( std::uint32_t i=0; i<item_count; ++i )
-            {
-                std::uint32_t token_index = 0;
-                std::string_view item = this->items[i].lowercase;
-                this->items[i].token_count = 0;
-                for ( auto token : tokenize(item) )
+                std::string item_lcase_storage = case_conv.to_lower(item_text);
+                std::string_view item_lcase = item_lcase_storage; // not strictly needed
+                for ( auto token : tokenize(item_lcase) )
                 {
-                    ++(this->items[i].token_count);
-                    auto text = std::string_view(token.begin(), token.end());
+                    std::uint32_t item_token_index = static_cast<std::uint32_t>(item.token_count);
+                    ++item.token_count;
+                    std::string_view text = std::string_view(token.begin(), token.end());
                     std::size_t hash = strings::get_hash(text);
 
                     bool found_matching_token = false;
@@ -200,41 +226,53 @@ namespace search
                     {
                         for ( auto it = found.first; it != found.second; ++it )
                         {
-                            if ( it->second.text == text )
+                            token_key_type token_key = it->second;
+                            token_type & token = tokens[token_key];
+                            if ( text == token.text )
                             {
-                                it->second.owners.emplace_back(i, token_index);
+                                token.owners.emplace_back(item_key, item_token_index);
                                 found_matching_token = true;
                             }
                         }
                     }
 
                     if ( !found_matching_token )
-                        this->token_map.emplace(hash, token_type {.text = text, .owners = {{ .item_index = i, .item_token_index = token_index }} });
-
-                    ++token_index;
+                    {
+                        token_key_type token_key = this->tokens.push_back(token_type {
+                            .text = std::string(text),
+                            .owners = {token_type::owner{ .item_key = item_key, .item_token_index = item_token_index }}
+                        });
+                        this->token_map.emplace(hash, token_key);
+                    }
                 }
+                
+                ++item_index;
             }
 
             // TODO: remove debug prints
             /*std::cout << "search_set: [\n";
-            for ( std::size_t i=0; i<item_count; ++ i)
-                std::cout << "  " << i << ": \"" << this->items[i].regular << "\"\n";
+            const auto & item_keys = items.data_keys();
+            const auto & item_values = items.unordered_data();
+            for ( auto item_key : item_keys )
+                std::cout << "  " << item_key << ": \"" << item_values[item_key].base_text << "\"\n";
             std::cout << "]\n";
 
             std::cout << "\ntoken_map: { // (item_index:item_token_index)\n";
             for ( const auto & entry : token_map )
             {
-                std::cout << "  \"" << entry.second.text << "\": { ";
+                token_key_type token_key = entry.second;
+                const auto & token = this->tokens[token_key];
+                std::cout << "  \"" << token.text << "\": { ";
                 bool first = true;
-                for ( const auto & owner : entry.second.owners )
+                for ( const auto & owner : token.owners )
                 {
                     if ( first )
                     {
-                        std::cout << "(" << owner.item_index << ":" << owner.item_token_index << ")";
+                        std::cout << "(" << owner.item_key << ":" << owner.item_token_index << ")";
                         first = false;
                     }
                     else
-                        std::cout << ", (" << owner.item_index << ":" << owner.item_token_index << ")";
+                        std::cout << ", (" << owner.item_key << ":" << owner.item_token_index << ")";
                 }
                 std::cout << " }\n";
             }
@@ -250,8 +288,8 @@ namespace search
             for ( auto token : tokenize(text) )
             {
                 auto & new_item = search_tokens.emplace_back();
-                new_item.regular = std::string(token.begin(), token.end());
-                new_item.lowercase = case_conv.to_lower(new_item.regular);
+                new_item.base_text = std::string(token.begin(), token.end());
+                new_item.lowercase = case_conv.to_lower(new_item.base_text);
             }
 
             struct search_match {
@@ -265,19 +303,21 @@ namespace search
             };
 
             // Search for full-token matches
-            std::vector<std::unordered_map<std::size_t, std::vector<search_match>>> search_token_matches {}; // [search_token_index](item_index->search_match)
+            std::vector<std::unordered_map<item_key_type, std::vector<search_match>>> search_token_matches {}; // [search_token_index](item_iter->search_match)
             search_token_matches.assign(search_tokens.size(), {});
             std::size_t search_token_count = search_tokens.size();
             for ( std::size_t i=0; i<search_token_count; ++i )
             {
-                const auto & item = search_tokens[i];
-                auto found = this->token_map.equal_range(get_hash(item.lowercase));
+                const auto & search_token = search_tokens[i];
+                auto found = this->token_map.equal_range(get_hash(search_token.lowercase));
                 for ( auto it = found.first; it != found.second; ++it )
                 {
-                    if ( item.lowercase != it->second.text )
+                    token_key_type token_key = it->second;
+                    const token_type & token = tokens[token_key];
+                    if ( search_token.lowercase != token.text )
                         continue;
 
-                    for ( const auto & owner : it->second.owners )
+                    for ( const auto & owner : token.owners )
                     {
                         std::size_t streak_count = 0;
                         if ( i > 0 && owner.item_token_index > 0 )
@@ -286,7 +326,7 @@ namespace search
                             for ( std::size_t j=i; j>0; --j )
                             {
                                 auto & prev_matches = search_token_matches[j-1];
-                                auto prev_match = prev_matches.find(owner.item_index);
+                                auto prev_match = prev_matches.find(owner.item_key);
                                 if ( prev_match != prev_matches.end() && prev_match->second[0].is_full() && prev_match->second[0].item_token_index == prev_item_token_index )
                                 {
                                     ++streak_count;
@@ -297,8 +337,14 @@ namespace search
                             }
                         }
 
-                        search_token_matches[i].emplace(owner.item_index, std::vector<search_match> {
-                            search_match{.item_token_index = owner.item_token_index, .streak_count = streak_count, .partial_match_length = 0, .item_token_length = it->second.text.size() }});
+                        search_token_matches[i].emplace(owner.item_key, std::vector<search_match> {
+                            search_match{
+                                .item_token_index = owner.item_token_index,
+                                .streak_count = streak_count,
+                                .partial_match_length = 0,
+                                .item_token_length = tokens[it->second].text.size()
+                            }
+                        });
                     }
                 }
             }
@@ -315,23 +361,36 @@ namespace search
                 if ( found != prefix_map.end() )
                 {
                     const auto & matching_tokens = found->second;
-                    for ( const token_type* matching_token : matching_tokens )
+                    for ( const token_key_type matching_token_key : matching_tokens )
                     {
-                        if ( matching_token->text.starts_with(search_token_text) )
+                        const token_type & matching_token = tokens[matching_token_key];
+                        if ( matching_token.text.starts_with(search_token_text) )
                         {
-                            const auto & owners = matching_token->owners;
+                            const auto & owners = matching_token.owners;
                             for ( const auto & owner : owners )
                             {
-                                auto existing_match = search_token_matches[i].find(owner.item_index);
+                                auto existing_match = search_token_matches[i].find(owner.item_key);
                                 if ( existing_match != search_token_matches[i].end() )
                                 {
                                     existing_match->second.emplace_back(
-                                        search_match{.item_token_index = owner.item_token_index, .streak_count = 0, .partial_match_length = prefix_size, .item_token_length = matching_token->text.size()});
+                                        search_match{
+                                            .item_token_index = owner.item_token_index,
+                                            .streak_count = 0,
+                                            .partial_match_length = prefix_size,
+                                            .item_token_length = matching_token.text.size()
+                                        }
+                                    );
                                 }
                                 else
                                 {
-                                    search_token_matches[i].emplace(owner.item_index, std::vector<search_match> {
-                                        search_match{.item_token_index = owner.item_token_index, .streak_count = 0, .partial_match_length = prefix_size, .item_token_length = matching_token->text.size()}});
+                                    search_token_matches[i].emplace(owner.item_key, std::vector<search_match> {
+                                        search_match{
+                                            .item_token_index = owner.item_token_index,
+                                            .streak_count = 0,
+                                            .partial_match_length = prefix_size,
+                                            .item_token_length = matching_token.text.size()
+                                        }
+                                    });
                                 }
                             }
                         }
@@ -340,13 +399,15 @@ namespace search
             }
 
             struct score_contributor : search_match {
-                std::size_t score = 0;
+                std::uint64_t score = 0;
             };
 
-            std::vector<std::size_t> search_scores {};
-            std::vector<std::vector<score_contributor>> search_score_contributors {};
-            search_scores.assign(this->items.size(), 0);
-            search_score_contributors.assign(this->items.size(), {});
+            struct search_result {
+                std::uint64_t score = 0;
+                std::vector<score_contributor> contributors {};
+            };
+
+            std::unordered_map<item_key_type, search_result> search_result_map {};
             //std::cout << "\nmatches_found: { // (item_index:item_token_index/partial_match_len) ^ streak_count\n";
             for ( std::size_t i=0; i<search_token_count; ++i )
             {
@@ -356,10 +417,10 @@ namespace search
                 bool first = true;
                 for ( const auto & match_set : matches )
                 {
-                    std::size_t item_index = match_set.first;
+                    item_key_type item_key = match_set.first;
                     for ( const auto & match : match_set.second )
                     {
-                        std::size_t match_score = 0;
+                        std::uint64_t match_score = 0;
                         if ( match.is_partial() ) // Partial-match
                         {
                             bool also_full_token = false; // This token matched this item previously as a full-search token
@@ -373,10 +434,10 @@ namespace search
                             }
 
                             bool is_streak_ending = false; // This token came at the end of a streak of full-token matches
-                            if ( i > 0 && item_index > 0 )
+                            if ( i > 0 )
                             {
                                 auto & prev_token_matches = search_token_matches[i-1];
-                                auto found_prev = prev_token_matches.find(item_index-1);
+                                auto found_prev = prev_token_matches.find(item_key);
                                 is_streak_ending = (found_prev != prev_token_matches.end());
                             }
 
@@ -398,15 +459,29 @@ namespace search
                         else // Non-chain full-token match
                             match_score = search_token.lowercase.size()*search_token.lowercase.size() * 10000;
 
-                        search_scores[item_index] += match_score;
-                        search_score_contributors[item_index].push_back({{match}, match_score});
+                        if ( match_score > 0 )
+                        {
+                            auto found = search_result_map.find(item_key);
+                            if ( found != search_result_map.end() )
+                            {
+                                found->second.score += match_score;
+                                found->second.contributors.push_back({{match}, match_score});
+                            }
+                            else
+                            {
+                                search_result_map.emplace(item_key, search_result {
+                                    .score = match_score,
+                                    .contributors = {{{match}, match_score}}
+                                });
+                            }
+                        }
 
                         /*if ( first )
                             first = false;
                         else
                             std::cout << ", ";
                         
-                        std::cout << "(" << item_index << ":" << match.item_token_index;
+                        std::cout << "(" << item_key << ":" << match.item_token_index;
                         if ( match.partial_match_length > 0 )
                             std::cout << "/" << match.partial_match_length;
 
@@ -423,23 +498,25 @@ namespace search
 
             // TODO: remove debug prints
             std::cout << "\nsearching for \"" << text << "\" ";
-            for ( auto & item : search_tokens )
-                std::cout << "[" << item.lowercase << "]";
+            for ( auto & search_token : search_tokens )
+                std::cout << "[" << search_token.lowercase << "]";
             std::cout << "\n";
 
             struct scored_result_index
             {
-                std::size_t score = 0;
+                std::uint64_t score = 0;
                 std::size_t index = 0;
+                const item_type* item = nullptr;
+                decltype(search_result_map)::value_type* result = nullptr;
             };
             
             std::vector<scored_result_index> results {};
-            results.assign(items.size(), {});
-            for ( std::size_t i=0; i<items.size(); ++i )
+            for ( auto & search_result : search_result_map )
             {
-                results[i].index = i;
-                results[i].score = search_scores[i];
+                const item_type* item = &items[search_result.first];
+                results.emplace_back(search_result.second.score, item->index, item, &search_result);
             }
+
             std::sort(results.begin(), results.end(), [](const scored_result_index & lhs, const scored_result_index & rhs) {
                 return lhs.score > rhs.score || (lhs.score == rhs.score && lhs.index < rhs.index);
             });
@@ -456,12 +533,13 @@ namespace search
                 }
                 if ( result.score > 0 || text.empty() )
                 {
-                    std::size_t i = result.index;
-                    std::cout << "  " << i << ": \"" << this->items[i].regular << "\" --> " << search_scores[i] << "  // ";
-                    auto tokens = tokenize(this->items[i].lowercase);
-                    std::sort(search_score_contributors[i].begin(), search_score_contributors[i].end(),
+                    const item_type & item = *result.item;
+                    auto & contributors = result.result->second.contributors;
+                    std::cout << "  " << result.index << ": \"" << item.base_text << "\" --> " << result.score << "  // ";
+                    auto tokens = tokenize(item.lowercase);
+                    std::sort(contributors.begin(), contributors.end(),
                         [](const score_contributor & lhs, const score_contributor & rhs) { return lhs.score > rhs.score; });
-                    for ( const auto & match : search_score_contributors[i] )
+                    for ( const auto & match : contributors )
                     {
                         auto token_it = std::ranges::next(std::ranges::begin(tokens), match.item_token_index);
                         auto token_text = std::string_view(std::begin(*token_it), std::end(*token_it));

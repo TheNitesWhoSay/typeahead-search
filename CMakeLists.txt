@@ -8,6 +8,15 @@ set(This heuristic-search)
 
 project(${This})
 
+include(FetchContent)
+FetchContent_Declare(
+  slot-map
+  GIT_REPOSITORY https://github.com/TheNitesWhoSay/slot-map.git
+  GIT_TAG b8c263c
+)
+FetchContent_MakeAvailable(slot-map)
+include_directories(${slot-map_SOURCE_DIR}/include)
+
 set(CMAKE_BUILD_PARALLEL_LEVEL)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 23)

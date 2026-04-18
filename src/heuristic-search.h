@@ -89,12 +89,11 @@ namespace search
         struct item_type
         {
             std::string base_text = "";
-            std::string lowercase = ""; // TODO: this is used by *search tokens* and once in the result renderer
             std::uint32_t token_count = 0;
             std::size_t index = 0;
         };
 
-        struct search_token : item_type
+        struct search_token_type : item_type
         {
             std::string lowercase = "";
         };
@@ -206,7 +205,6 @@ namespace search
             {
                 item_key_type item_key = this->items.push_back(item_type {
                     .base_text = item_text,
-                    .lowercase = case_conv.to_lower(item_text),
                     .index = item_index
                 });
                 item_type & item = this->items[item_key];
@@ -283,7 +281,7 @@ namespace search
 
         void search_for(std::string_view text)
         {
-            std::vector<item_type> search_tokens {};
+            std::vector<search_token_type> search_tokens {};
             icux::case_converter case_conv {};
             for ( auto token : tokenize(text) )
             {
@@ -536,7 +534,7 @@ namespace search
                     const item_type & item = *result.item;
                     auto & contributors = result.result->second.contributors;
                     std::cout << "  " << result.index << ": \"" << item.base_text << "\" --> " << result.score << "  // ";
-                    auto tokens = tokenize(item.lowercase);
+                    auto tokens = tokenize(item.base_text);
                     std::sort(contributors.begin(), contributors.end(),
                         [](const score_contributor & lhs, const score_contributor & rhs) { return lhs.score > rhs.score; });
                     for ( const auto & match : contributors )

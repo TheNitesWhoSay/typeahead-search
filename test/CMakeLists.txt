@@ -10,6 +10,15 @@ set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 23)
 add_compile_options(/permissive- ${ASAN})
 
+include(FetchContent)
+FetchContent_Declare(
+  slot-map
+  GIT_REPOSITORY https://github.com/TheNitesWhoSay/slot-map.git
+  GIT_TAG 1c2aa29
+)
+FetchContent_MakeAvailable(slot-map)
+include_directories(${slot-map_SOURCE_DIR}/include)
+
 set(TestPath ${CMAKE_CURRENT_SOURCE_DIR})
 cmake_path(GET TestPath PARENT_PATH TypeaheadSearchRootPath)
 include_directories(${TypeaheadSearchRootPath}/include)

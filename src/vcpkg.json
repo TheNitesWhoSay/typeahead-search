@@ -1,10 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-  "name": "typeahead-search",
+  "name": "typeahead-search-example",
   "version": "0.1.0",
   "dependencies": [
-    "icu",
-    "gtest"
+    "icu"
   ],
   "builtin-baseline": "e140b1fde236eb682b0d47f905e65008a191800f"
 }

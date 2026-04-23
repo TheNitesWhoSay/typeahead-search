@@ -564,6 +564,49 @@ namespace search
 
             std::cout << '\n';
         }
+
+        void item_text_changed(std::size_t index, const std::string & new_text)
+        {
+            // TODO
+            // The problem with this update is it's using the item index.. items are not ordered by index
+            // Instead items have keys
+        }
+
+        // if Auto_move is set (not set by default), item indexes after the insertion index are incremented
+        // if Auto_move is not set then you are expected to separately call item_moved to update the indexes
+        template <bool Auto_move = false>
+        void item_added(std::size_t index, const std::string & new_text)
+        {
+            if constexpr ( Auto_move )
+            {
+                // TODO
+            }
+            else
+            {
+                // TODO
+            }
+        }
+
+        // if Auto_move is set (not set by default), item indexes after the insertion index are decremented
+        // if Auto_move is not set then you are expected to separately call item_moved to update the indexes
+        template <bool Auto_move = false>
+        void item_removed(std::size_t index)
+        {
+            if constexpr ( Auto_move )
+            {
+                // TODO
+            }
+            else
+            {
+                // TODO
+            }
+        }
+
+        void item_moved(std::size_t old_index, std::size_t new_index)
+        {
+            // TODO
+        }
+
     };
 
 }

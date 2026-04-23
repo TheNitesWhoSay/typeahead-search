@@ -1,6 +1,6 @@
-# Heuristic Search
+# Typeahead Search
 
-Lightning fast type-ahead heuristic search for in-memory data-sets.
+Lightning fast type-ahead search for in-memory data-sets.
 
 ## Mission
 

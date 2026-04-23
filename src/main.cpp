@@ -1,5 +1,5 @@
+#include <typeahead/search.h>
 #include "example-data.h"
-#include "heuristic-search.h"
 #include <algorithm>
 #include <cassert>
 #include <iostream>

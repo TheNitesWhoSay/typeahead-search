@@ -33,12 +33,14 @@ set(Sources
 
 add_executable(${This} ${Sources} ${Headers})
 
+find_package(ICU COMPONENTS uc i18n data REQUIRED)
+
 enable_testing()
 
 find_package(GTest CONFIG REQUIRED)
 include(GoogleTest)
 
-target_link_libraries(${This} PRIVATE GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
+target_link_libraries(${This} PRIVATE ICU::uc ICU::i18n ICU::data GTest::gtest GTest::gtest_main GTest::gmock GTest::gmock_main)
 
 if ( WIN64_DEBUG_ASAN ) # The asan dll must be made available for gtest_discover_tests to use the test exe
     configure_file("$ENV{VCToolsInstallDir}/bin/Hostx64/x64/clang_rt.asan_dynamic-x86_64.dll"

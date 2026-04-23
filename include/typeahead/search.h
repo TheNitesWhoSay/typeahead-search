@@ -118,12 +118,6 @@ namespace search
         // [i] = prefixes of length i+1, map prefix value (codepoints mapped to integer) -> vector of token keys
         std::array<std::unordered_map<std::size_t, std::vector<token_key_type>>, max_prefix_size> prefix_lookup {};
 
-        // TODO: the prefix_lookup vector might be better as a self-managed linked-list given the relative rarity of "token collisions"
-        // vector is 24 bytes (and then ~0 wasted for additional elements)
-        // 1-elem linked list (usually expected) = 8 bytes
-        // 2-elem = 16 bytes
-        // 3-elem = 24 bytes
-
         void load_prefixes()
         {
             const auto token_count = tokens.size();
@@ -279,7 +273,7 @@ namespace search
             load_prefixes();
         }
 
-        void search_for(std::string_view text)
+        std::vector<std::size_t> search_for(std::string_view text)
         {
             std::vector<search_token_type> search_tokens {};
             icux::case_converter case_conv {};
@@ -519,11 +513,13 @@ namespace search
                 return lhs.score > rhs.score || (lhs.score == rhs.score && lhs.index < rhs.index);
             });
 
+            std::vector<std::size_t> result_indexes {};
             std::cout << "\nsearch_scores: [\n";
             std::size_t index = 0;
             for ( const auto & result : results )
             {
                 ++index;
+                result_indexes.push_back(result.index);
                 if ( index == 15 )
                 {
                     std::cout << "  ...\n";
@@ -556,13 +552,12 @@ namespace search
                     }
                     std::cout << "\n";
                 }
-                else
-                    break;
             }
 
             std::cout << "]\n\n";
 
             std::cout << '\n';
+            return result_indexes;
         }
 
         void item_text_changed(std::size_t index, const std::string & new_text)

@@ -37,8 +37,11 @@ namespace icux
         std::string to_lower(const std::string & utf8_str)
         {
             std::int32_t utf8_input_size = static_cast<std::int32_t>(utf8_str.size());
+            if ( utf8_input_size == 0 )
+                return utf8_str;
+
             std::int32_t op_buffer_size = utf8_input_size*2+1;
-            std::string utf8_lcase(' ', static_cast<std::size_t>(op_buffer_size));
+            std::string utf8_lcase(static_cast<std::size_t>(op_buffer_size), '\0');
             expand_buffers(op_buffer_size);
             
             std::int32_t utf8_lcase_size = 0;

@@ -21,11 +21,39 @@ Lightning fast type-ahead search for in-memory data-sets.
 | Regular partial-token matches | (tokenLen)^2\*1,000\*searchTokenLen/itemTokenLen |
 | Partial-token matches that separately matched as full tokens | (tokenLen)^2\*100\*searchTokenLen/itemTokenLen |
 
+## Search Cache Data
+
+The search cache consists of four variables...
+1. The searchable items
+2. The tokens for the searchable items (not to be confused with the search tokens that search strings are broken into)
+3. The token map (maps full-token hashes to token keys)
+4. The token prefix map (maps token prefixes to token keys)
+
+The search cache is designed to maximize the speed of both searching and incremental updates to search items.
+
+Fast incremental updates means references to both tokens (to get to tokens from the token map & token prefix map) and items (to get from tokens to the owning items) are required.
+
+To that end, both items and tokens are slot maps which provide stable keys, fast iteration, constant-time insertion/deletion, and reasonably efficient memory usage. 
+
+The token map is a simple unordered_map of full-token hashes to token keys, and the token prefix map is an array of length 8 (representing prefix string byte lengths 1-8), and whose entries are a map from prefix values (leading string data converted to an unsigned integer) to tokens that have said prefix.
+
+## Search Cache Build & Update
+
+The search cache is built by calling .load with items (or incrementally with .item_added), .load will take in a vector of search-item strings and with each of them it will add an entry to items and tokenize the search-item string and add to tokens & token map. Prefixes are then loaded in bulk after all items have been loaded.
+
+The search cache can be added to with .item_added which will take in a search-item string and the index at which it will be added, it will then add it to items, tokenize the search-item string and add to tokens, token-map and prefixes.
+
+The search cache can be removed from with .item_removed which will remove the item and any tokens, token-map entries, and prefixes that are now not owned by any item.
+
+The search cache can have an individual items text updated with .item_text_changed, which is approximately the same as .item_remove combined with .item_added (insofar as tokens are concerned) just the items entry isn't removed or added, only its base text changes.
+
+Finally items can be moved to new indexes with .item_moved, this only changes the index you get for your results and would be appropriate if you performed an operation that changed search-item indexes (like a sort).
+
 ## TODO
 
 - [Done] Make the search cache update-friendly (eliminate dependence on pointers that may be invalidated by updates)
 - [Done] Make the actual cache update logic
-- Document the cache data, cache-build logic, cache-update logic & search logic
+- [Done] Document the cache data, cache-build logic, cache-update logic & search logic
 - Create additional tokens around the caret-position (blinking cursor)
 - Gather some example cases for special characters (e.g. \`\~\!\@\#\$\%\^\&\*\(\)\-\_\=\+\[\]\{\}\;\:\'\"\,\.\<\>\/\?), decide what search rankings should look like & how to achieve that
 - Opt-in support for logic accounting for custom character codes (e.g. <02> which maps to a particular control character and partials thereof "<", "<0", "<02")

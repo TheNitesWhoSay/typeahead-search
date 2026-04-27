@@ -116,3 +116,98 @@ TEST(Search, ResultRankings)
 	);
 	EXPECT_EQ(2, perms);
 }
+
+TEST(Search, CacheUpdate)
+{
+	search::strings cache {};
+	EXPECT_TRUE(cache.search_for("f").empty());
+	
+	auto first_expected = std::vector<std::size_t> { 0 };
+	auto second_expected = std::vector<std::size_t> { 1 };
+	auto both_expected = std::vector<std::size_t> { 0, 1 };
+	auto both_alt_expected = std::vector<std::size_t> { 1, 0 };
+
+	cache.item_added<false>(0, "first item");
+	EXPECT_EQ(cache.search_for("f"), first_expected);
+	EXPECT_EQ(cache.search_for("first"), first_expected);
+	EXPECT_EQ(cache.search_for("item"), first_expected);
+	EXPECT_EQ(cache.search_for("first item"), first_expected);
+
+	cache.item_removed<false>(0);
+	EXPECT_TRUE(cache.search_for("f").empty());
+	EXPECT_TRUE(cache.search_for("first").empty());
+	EXPECT_TRUE(cache.search_for("item").empty());
+	EXPECT_TRUE(cache.search_for("first item").empty());
+	
+	cache.item_added<false>(0, "first item");
+	EXPECT_EQ(cache.search_for("f"), first_expected);
+	EXPECT_EQ(cache.search_for("first"), first_expected);
+	EXPECT_EQ(cache.search_for("item"), first_expected);
+	EXPECT_EQ(cache.search_for("first item"), first_expected);
+	
+	cache.item_added<false>(1, "second item");
+	EXPECT_EQ(cache.search_for("f"), first_expected);
+	EXPECT_EQ(cache.search_for("first"), first_expected);
+	EXPECT_EQ(cache.search_for("first item"), both_expected);
+	EXPECT_EQ(cache.search_for("s"), second_expected);
+	EXPECT_EQ(cache.search_for("second"), second_expected);
+	EXPECT_EQ(cache.search_for("item"), both_expected);
+	EXPECT_EQ(cache.search_for("second item"), both_alt_expected);
+
+	cache.item_removed<false>(1);
+	EXPECT_EQ(cache.search_for("f"), first_expected);
+	EXPECT_EQ(cache.search_for("first"), first_expected);
+	EXPECT_EQ(cache.search_for("item"), first_expected);
+	EXPECT_EQ(cache.search_for("first item"), first_expected);
+	EXPECT_TRUE(cache.search_for("s").empty());
+	EXPECT_TRUE(cache.search_for("second").empty());
+	EXPECT_EQ(cache.search_for("second item"), first_expected);
+	
+	cache.item_added<false>(1, "second item");
+	EXPECT_EQ(cache.search_for("f"), first_expected);
+	EXPECT_EQ(cache.search_for("first"), first_expected);
+	EXPECT_EQ(cache.search_for("item"), both_expected);
+	EXPECT_EQ(cache.search_for("first item"), both_expected);
+	EXPECT_EQ(cache.search_for("s"), second_expected);
+	EXPECT_EQ(cache.search_for("second"), second_expected);
+	EXPECT_EQ(cache.search_for("second item"), both_alt_expected);
+	
+	cache.item_removed<false>(0);
+	EXPECT_TRUE(cache.search_for("f").empty());
+	EXPECT_TRUE(cache.search_for("first").empty());
+	EXPECT_EQ(cache.search_for("item"), second_expected);
+	EXPECT_EQ(cache.search_for("first item"), second_expected);
+	EXPECT_EQ(cache.search_for("s"), second_expected);
+	EXPECT_EQ(cache.search_for("second"), second_expected);
+	EXPECT_EQ(cache.search_for("second item"), second_expected);
+
+}
+
+TEST(Search, ItemTextUpdate)
+{
+	search::strings cache {};
+	
+	auto first_expected = std::vector<std::size_t> { 0 };
+	auto second_expected = std::vector<std::size_t> { 1 };
+	auto both_expected = std::vector<std::size_t> { 0, 1 };
+	auto both_alt_expected = std::vector<std::size_t> { 1, 0 };
+
+	cache.load({"first item", "second item"});
+	EXPECT_EQ(cache.search_for("f"), first_expected);
+	EXPECT_EQ(cache.search_for("first"), first_expected);
+	EXPECT_EQ(cache.search_for("item"), both_expected);
+	EXPECT_EQ(cache.search_for("first item"), both_expected);
+	EXPECT_EQ(cache.search_for("s"), second_expected);
+	EXPECT_EQ(cache.search_for("second"), second_expected);
+	EXPECT_EQ(cache.search_for("second item"), both_alt_expected);
+
+	cache.item_text_changed(0, "qwerty common");
+	cache.item_text_changed(1, "asdf common");
+	EXPECT_EQ(cache.search_for("q"), first_expected);
+	EXPECT_EQ(cache.search_for("qwerty"), first_expected);
+	EXPECT_EQ(cache.search_for("common"), both_expected);
+	EXPECT_EQ(cache.search_for("qwerty common"), both_expected);
+	EXPECT_EQ(cache.search_for("a"), second_expected);
+	EXPECT_EQ(cache.search_for("asdf"), second_expected);
+	EXPECT_EQ(cache.search_for("asdf common"), both_alt_expected);
+}

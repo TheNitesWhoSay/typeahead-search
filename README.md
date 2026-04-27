@@ -24,7 +24,7 @@ Lightning fast type-ahead search for in-memory data-sets.
 ## TODO
 
 - [Done] Make the search cache update-friendly (eliminate dependence on pointers that may be invalidated by updates)
-- Make the actual cache update logic
+- [Done] Make the actual cache update logic
 - Document the cache data, cache-build logic, cache-update logic & search logic
 - Create additional tokens around the caret-position (blinking cursor)
 - Gather some example cases for special characters (e.g. \`\~\!\@\#\$\%\^\&\*\(\)\-\_\=\+\[\]\{\}\;\:\'\"\,\.\<\>\/\?), decide what search rankings should look like & how to achieve that

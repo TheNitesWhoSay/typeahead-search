@@ -82,7 +82,7 @@ namespace search
         return text | std::views::chunk_by(same_category) | std::views::filter(not_whitespace);
     }
 
-    struct strings
+    class strings
     {
         static constexpr std::hash<std::string_view> get_hash {};
         
@@ -107,6 +107,8 @@ namespace search
             {
                 item_key_type item_key {}; // Index of searchable items
                 std::uint32_t item_token_index = 0; // Index of this token within the searchable item
+
+                constexpr bool operator==(const token_type::owner & other) { return item_key == other.item_key && item_token_index == other.item_token_index; }
             };
 
             std::string text {};
@@ -121,6 +123,26 @@ namespace search
         // [i] = prefixes of length i+1, map prefix value (codepoints mapped to integer) -> vector of token keys
         std::array<std::unordered_map<std::size_t, std::vector<token_key_type>>, max_prefix_size> prefix_lookup {};
 
+        void load_prefixes(token_key_type token_key, std::string_view token_text)
+        {
+            std::size_t token_text_size = token_text.size();
+            if ( token_text_size > 1 ) // tokens of size 1 or 0 have no prefix
+            {
+                std::size_t token_max_prefix_size = std::min(max_prefix_size, token_text_size-1);
+                for ( std::size_t i=0; i<token_max_prefix_size; ++i )
+                {
+                    std::size_t prefix_size = i+1;
+                    auto & prefix_map = prefix_lookup[i];
+                    std::size_t prefix = prefix_value(std::string_view(&token_text[0], prefix_size));
+                    auto found = prefix_map.find(prefix);
+                    if ( found != prefix_map.end() )
+                        found->second.push_back(token_key);
+                    else
+                        prefix_map.emplace(prefix, std::vector<token_key_type>{token_key});
+                }
+            }
+        }
+
         void load_prefixes()
         {
             const auto token_count = tokens.size();
@@ -131,22 +153,7 @@ namespace search
                 const auto token_key = keys[key_index];
                 const token_type & token = token_values[key_index];
                 std::string_view token_text = token.text;
-                std::size_t token_text_size = token_text.size();
-                if ( token_text_size > 1 ) // tokens of size 1 or 0 have no prefix
-                {
-                    std::size_t token_max_prefix_size = std::min(max_prefix_size, token_text_size-1);
-                    for ( std::size_t i=0; i<token_max_prefix_size; ++i )
-                    {
-                        std::size_t prefix_size = i+1;
-                        auto & prefix_map = prefix_lookup[i];
-                        std::size_t prefix = prefix_value(std::string_view(&token_text[0], prefix_size));
-                        auto found = prefix_map.find(prefix);
-                        if ( found != prefix_map.end() )
-                            found->second.push_back(token_key);
-                        else
-                            prefix_map.emplace(prefix, std::vector<token_key_type>{token_key});
-                    }
-                }
+                load_prefixes(token_key, token_text);
             }
 
             /*for ( std::size_t i=0; i<max_prefix_size; ++i )
@@ -188,6 +195,136 @@ namespace search
             }*/
         }
 
+        template <bool Load_prefixes>
+        void upsert_item_tokens(const std::string & item_text, item_key_type item_key, item_type & item, icux::case_converter & case_conv)
+        {
+            std::string item_lcase_storage = case_conv.to_lower(item_text);
+            std::string_view item_lcase = item_lcase_storage;
+            item.token_count = 0;
+            for ( auto token : tokenize(item_lcase) )
+            {
+                std::uint32_t item_token_index = static_cast<std::uint32_t>(item.token_count);
+                ++item.token_count;
+                std::string_view token_text = std::string_view(token.begin(), token.end());
+                std::size_t hash = strings::get_hash(token_text);
+
+                bool found_matching_token = false;
+                auto found = this->token_map.equal_range(hash);
+                if ( found.first != this->token_map.end() )
+                {
+                    for ( auto it = found.first; it != found.second; ++it )
+                    {
+                        token_key_type token_key = it->second;
+                        token_type & token = tokens[token_key];
+                        if ( token_text == token.text )
+                        {
+                            token.owners.emplace_back(item_key, item_token_index);
+                            found_matching_token = true;
+                        }
+                    }
+                }
+
+                if ( !found_matching_token )
+                {
+                    token_key_type token_key = this->tokens.push_back(token_type {
+                        .text = std::string(token_text),
+                        .owners = {token_type::owner{ .item_key = item_key, .item_token_index = item_token_index }}
+                    });
+                    this->token_map.emplace(hash, token_key);
+
+                    if constexpr ( Load_prefixes )
+                        load_prefixes(token_key, token_text);
+                }
+            }
+        }
+
+        void remove_item_tokens_by_key(item_key_type item_key)
+        {
+            const item_type & item = items[item_key];
+            std::string item_lcase_storage = icux::case_converter{}.to_lower(item.base_text);
+            std::string_view item_lcase = std::string_view(item_lcase_storage);
+            
+            std::uint32_t item_token_index = 0;
+            for ( auto token_text_range : tokenize(item_lcase) )
+            {
+                std::string_view token_text(token_text_range);
+                
+                std::size_t hash = strings::get_hash(token_text);
+                auto found = this->token_map.equal_range(hash);
+                if ( found.first != this->token_map.end() )
+                {
+                    for ( auto it = found.first; it != found.second; ++it )
+                    {
+                        token_key_type token_key = it->second;
+                        token_type & token = tokens[token_key];
+                        if ( token_text != token.text )
+                            continue; // Hash collision
+
+                        auto found = std::find(token.owners.begin(), token.owners.end(),
+                            token_type::owner{ .item_key = item_key, .item_token_index = item_token_index});
+                        if ( found != token.owners.end() )
+                        {
+                            if ( token.owners.size() == 1 ) // This is the last owner, remove the entire token
+                            {
+                                // Remove the token prefixes...
+                                std::size_t token_text_size = token_text.size();
+                                if ( token_text_size > 1 ) // tokens of size 1 or 0 have no prefix
+                                {
+                                    std::size_t token_max_prefix_size = std::min(max_prefix_size, token_text_size-1);
+                                    for ( std::size_t i=0; i<token_max_prefix_size; ++i )
+                                    {
+                                        std::size_t prefix_size = i+1;
+                                        auto & prefix_map = prefix_lookup[i];
+                                        std::size_t prefix = prefix_value(std::string_view(&token_text[0], prefix_size));
+                                        auto found = prefix_map.find(prefix);
+                                        if ( found != prefix_map.end() )
+                                        {
+                                            auto found_owner = std::find(found->second.begin(), found->second.end(), token_key);
+                                            if ( found_owner != found->second.end() )
+                                            {
+                                                if ( found->second.size() == 1 ) // This is the last prefix token key, remove the prefix entirely
+                                                    prefix_map.erase(found);
+                                                else // This is not the last prefix owner, remove the prefix token key
+                                                    found->second.erase(found_owner);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Remove the token_map and tokens entries
+                                token_map.erase(it);
+                                tokens.erase(token_key);
+                            }
+                            else // This is not the last owner of the token, remove this particular owner
+                                token.owners.erase(found);
+                        }
+                        break;
+                    }
+                }
+                ++item_token_index;
+            }
+        }
+
+        void remove_item_by_key(item_key_type item_key)
+        {
+            remove_item_tokens_by_key(item_key);
+            items.erase(item_key);
+        }
+
+        std::optional<item_key_type> get_item_key(std::size_t item_index)
+        {
+            const auto & unordered_items = items.unordered_data();
+            std::size_t total_items = unordered_items.size();
+            for ( std::size_t i=0; i<total_items; ++i )
+            {
+                const auto & item = unordered_items[i];
+                if ( item.index == item_index )
+                    return std::make_optional<item_key_type>(items.data_keys()[i]);
+            }
+            return std::nullopt;
+        }
+
+    public:
         void load(const std::vector<std::string> & new_items)
         {
             this->items.clear();
@@ -206,41 +343,7 @@ namespace search
                 });
                 item_type & item = this->items[item_key];
 
-                std::string item_lcase_storage = case_conv.to_lower(item_text);
-                std::string_view item_lcase = item_lcase_storage; // not strictly needed
-                for ( auto token : tokenize(item_lcase) )
-                {
-                    std::uint32_t item_token_index = static_cast<std::uint32_t>(item.token_count);
-                    ++item.token_count;
-                    std::string_view text = std::string_view(token.begin(), token.end());
-                    std::size_t hash = strings::get_hash(text);
-
-                    bool found_matching_token = false;
-                    auto found = this->token_map.equal_range(hash);
-                    if ( found.first != this->token_map.end() )
-                    {
-                        for ( auto it = found.first; it != found.second; ++it )
-                        {
-                            token_key_type token_key = it->second;
-                            token_type & token = tokens[token_key];
-                            if ( text == token.text )
-                            {
-                                token.owners.emplace_back(item_key, item_token_index);
-                                found_matching_token = true;
-                            }
-                        }
-                    }
-
-                    if ( !found_matching_token )
-                    {
-                        token_key_type token_key = this->tokens.push_back(token_type {
-                            .text = std::string(text),
-                            .owners = {token_type::owner{ .item_key = item_key, .item_token_index = item_token_index }}
-                        });
-                        this->token_map.emplace(hash, token_key);
-                    }
-                }
-                
+                upsert_item_tokens<false>(item_text, item_key, item, case_conv);
                 ++item_index;
             }
 
@@ -565,9 +668,15 @@ namespace search
 
         void item_text_changed(std::size_t index, const std::string & new_text)
         {
-            // TODO
-            // The problem with this update is it's using the item index.. items are not ordered by index
-            // Instead items have keys
+            if ( auto found_item_key = get_item_key(index) )
+            {
+                icux::case_converter case_conv {};
+                item_key_type item_key = *found_item_key;
+                remove_item_tokens_by_key(item_key);
+                auto & item = items[item_key];
+                item.base_text = new_text;
+                upsert_item_tokens<true>(new_text, item_key, item, case_conv);
+            }
         }
 
         // if Auto_move is set (not set by default), item indexes after the insertion index are incremented
@@ -577,12 +686,18 @@ namespace search
         {
             if constexpr ( Auto_move )
             {
-                // TODO
+                for ( auto & item : items )
+                {
+                    if ( item.index >= index )
+                        ++item.index;
+                }
             }
-            else
-            {
-                // TODO
-            }
+
+            auto item_key = items.push_back(item_type{.base_text = new_text, .token_count = 0, .index = index});
+            auto & item = items[item_key];
+
+            icux::case_converter case_conv {};
+            upsert_item_tokens<true>(new_text, item_key, item, case_conv);
         }
 
         // if Auto_move is set (not set by default), item indexes after the insertion index are decremented
@@ -590,19 +705,33 @@ namespace search
         template <bool Auto_move = false>
         void item_removed(std::size_t index)
         {
+            if ( auto found_item_key = get_item_key(index) )
+                remove_item_by_key(*found_item_key);
+            else
+                throw std::out_of_range("Item index given to item_removed was not present in the search cache!");
+
             if constexpr ( Auto_move )
             {
-                // TODO
-            }
-            else
-            {
-                // TODO
+                for ( auto & item : items )
+                {
+                    if ( item.index > index )
+                        --item.index;
+                }
             }
         }
 
+        // Call to indicate that the item previously at old_index has been moved to new_index
+        // This will *only* update the item that presently has index "old_index" to have index "new_index", items will not be otherwise moved or changed
         void item_moved(std::size_t old_index, std::size_t new_index)
         {
-            // TODO
+            for ( auto & item : items )
+            {
+                if ( item.index = old_index )
+                {
+                    item.index = new_index;
+                    break;
+                }
+            }
         }
 
     };

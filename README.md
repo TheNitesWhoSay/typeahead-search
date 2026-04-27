@@ -31,7 +31,7 @@ The search cache consists of four variables...
 
 The search cache is designed to maximize the speed of both searching and incremental updates to search items.
 
-Fast incremental updates means references to both tokens (to get to tokens from the token map & token prefix map) and items (to get from tokens to the owning items) are required.
+Fast incremental updates means references to both tokens (to get to tokens from the token map & token prefix map) and items (to get from tokens to the owning items) must be stable.
 
 To that end, both items and tokens are slot maps which provide stable keys, fast iteration, constant-time insertion/deletion, and reasonably efficient memory usage. 
 
@@ -45,9 +45,9 @@ The search cache can be added to with .item_added which will take in a search-it
 
 The search cache can be removed from with .item_removed which will remove the item and any tokens, token-map entries, and prefixes that are now not owned by any item.
 
-The search cache can have an individual items text updated with .item_text_changed, which is approximately the same as .item_remove combined with .item_added (insofar as tokens are concerned) just the items entry isn't removed or added, only its base text changes.
+The search cache can have an individual items text updated with .item_text_changed, which is approximately the same as .item_removed combined with .item_added (insofar as tokens are concerned) just the items entry isn't removed or added, only its base text changes.
 
-Finally items can be moved to new indexes with .item_moved, this only changes the index you get for your results and would be appropriate if you performed an operation that changed search-item indexes (like a sort).
+Finally items can be moved to new indexes with .item_moved, this only changes the index you get for your results and would be appropriate if you performed an operation that changed search-item indexes (like a sort), or can be called manually if you don't specify auto-move to update indexes when calling .item_removed or .item_added, either specifying the auto-move flag or manually calling .item_moved may be appropriate depending on your use-case.
 
 ## TODO
 

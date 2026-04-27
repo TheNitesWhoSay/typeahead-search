@@ -64,6 +64,71 @@ TEST(SearchHelpers, Tokenize)
 		std::vector<std::string>{"a", "few", "different", "types", "of", "separators"});
 }
 
+TEST(SearchHelpers, IsTokenStart)
+{
+	EXPECT_TRUE(search::is_token_start(0, ""));
+	EXPECT_FALSE(search::is_token_start(1, ""));
+
+	EXPECT_TRUE(search::is_token_start(0, "a"));
+	EXPECT_FALSE(search::is_token_start(1, "a"));
+	EXPECT_FALSE(search::is_token_start(2, "a"));
+
+	EXPECT_TRUE(search::is_token_start(0, "asdf"));
+	EXPECT_FALSE(search::is_token_start(1, "asdf"));
+	EXPECT_FALSE(search::is_token_start(2, "asdf"));
+	EXPECT_FALSE(search::is_token_start(3, "asdf"));
+	EXPECT_FALSE(search::is_token_start(4, "asdf"));
+	EXPECT_FALSE(search::is_token_start(5, "asdf"));
+
+	EXPECT_FALSE(search::is_token_start(0, " a"));
+	EXPECT_FALSE(search::is_token_start(0, " asdf"));
+	EXPECT_TRUE(search::is_token_start(1, " a"));
+	EXPECT_TRUE(search::is_token_start(1, " asdf"));
+	EXPECT_FALSE(search::is_token_start(2, " a"));
+	EXPECT_FALSE(search::is_token_start(2, " asdf"));
+	
+	EXPECT_TRUE(search::is_token_start(0, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(1, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(2, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(3, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(4, "asdf qwerty"));
+	EXPECT_TRUE(search::is_token_start(5, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(6, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(7, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(8, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(9, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(10, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(11, "asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(12, "asdf qwerty"));
+	
+	EXPECT_FALSE(search::is_token_start(0, " asdf qwerty"));
+	EXPECT_TRUE(search::is_token_start(1, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(2, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(3, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(4, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(5, " asdf qwerty"));
+	EXPECT_TRUE(search::is_token_start(6, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(7, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(8, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(9, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(10, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(11, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(12, " asdf qwerty"));
+	EXPECT_FALSE(search::is_token_start(13, " asdf qwerty"));
+}
+
+TEST(SearchHelpers, LastTokenIn)
+{
+	EXPECT_EQ(search::last_token_in(""), "");
+	EXPECT_EQ(search::last_token_in("a"), "a");
+	EXPECT_EQ(search::last_token_in("asdf"), "asdf");
+	EXPECT_EQ(search::last_token_in(" asdf"), "asdf");
+	EXPECT_EQ(search::last_token_in("qwerty asdf"), "asdf");
+	EXPECT_EQ(search::last_token_in(" qwerty asdf"), "asdf");
+	EXPECT_EQ(search::last_token_in("qwerty asdf jkl"), "jkl");
+	EXPECT_EQ(search::last_token_in(" qwerty asdf jkl"), "jkl");
+}
+
 TEST(Search, ResultRankings)
 {
 	// Returns number of permutations searched/tested
@@ -115,6 +180,34 @@ TEST(Search, ResultRankings)
 		{"one two five", "one two six"}
 	);
 	EXPECT_EQ(2, perms);
+}
+
+TEST(Search, CaretPartialSearch)
+{
+	{
+		search::strings test {};
+		std::vector<std::string> search_set {"zerg larva", "zerg zergling"};
+		test.load(search_set);
+		std::vector<std::size_t> result_indexes = test.search_for("zerthing");
+		std::vector<std::string> results {};
+		for ( auto index : result_indexes )
+			results.push_back(search_set[index]);
+
+		std::vector<std::string> expected_results {}; // "zerthing" matches nothing"
+		EXPECT_EQ(results, expected_results); // Search should turn up nothing
+	}
+	{
+		search::strings test {};
+		std::vector<std::string> search_set {"zerg larva", "zerg zergling"};
+		test.load(search_set);
+		std::vector<std::size_t> result_indexes = test.search_for("zerthing", 3); // "zer|thing" with caret pos after the r makes tokens "zerthing" and "zer"
+		std::vector<std::string> results {};
+		for ( auto index : result_indexes )
+			results.push_back(search_set[index]);
+
+		std::vector<std::string> expected_results {"zerg zergling", "zerg larva"}; // "zer" should match on these just fine
+		EXPECT_EQ(results, expected_results);
+	}
 }
 
 TEST(Search, CacheUpdate)

@@ -54,7 +54,7 @@ Finally items can be moved to new indexes with .item_moved, this only changes th
 - [Done] Make the search cache update-friendly (eliminate dependence on pointers that may be invalidated by updates)
 - [Done] Make the actual cache update logic
 - [Done] Document the cache data, cache-build logic, cache-update logic & search logic
-- Create additional tokens around the caret-position (blinking cursor)
+- [Done] Create additional tokens around the caret-position (blinking cursor)
 - Gather some example cases for special characters (e.g. \`\~\!\@\#\$\%\^\&\*\(\)\-\_\=\+\[\]\{\}\;\:\'\"\,\.\<\>\/\?), decide what search rankings should look like & how to achieve that
 - Opt-in support for logic accounting for custom character codes (e.g. <02> which maps to a particular control character and partials thereof "<", "<0", "<02")
 - Check that scoring for duplicated full-tokens in items is sensible

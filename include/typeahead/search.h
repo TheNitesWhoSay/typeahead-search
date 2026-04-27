@@ -82,6 +82,21 @@ namespace search
         return text | std::views::chunk_by(same_category) | std::views::filter(not_whitespace);
     }
 
+    bool is_token_start(std::string_view::size_type pos, std::string_view text)
+    {
+        return pos == 0 && (text.size() == 0 || !std::isspace(text[0])) || (pos > 0 && pos < text.size() && std::isspace(text[pos-1]));
+    }
+
+    std::string_view last_token_in(std::string_view text)
+    {
+        for ( std::ptrdiff_t i=static_cast<std::ptrdiff_t>(text.size())-1; i>=0; --i )
+        {
+            if ( std::isspace(text[i]) )
+                return text.substr(i+1);
+        }
+        return text; // Entire string is a token
+    }
+
     class strings
     {
         static constexpr std::hash<std::string_view> get_hash {};
@@ -379,7 +394,7 @@ namespace search
             load_prefixes();
         }
 
-        std::vector<std::size_t> search_for(std::string_view text)
+        std::vector<std::size_t> search_for(std::string_view text, std::string_view::size_type caret_pos = std::string_view::npos)
         {
             std::vector<search_token_type> search_tokens {};
             icux::case_converter case_conv {};
@@ -388,6 +403,16 @@ namespace search
                 auto & new_item = search_tokens.emplace_back();
                 new_item.base_text = std::string(token.begin(), token.end());
                 new_item.lowercase = case_conv.to_lower(new_item.base_text);
+            }
+            if ( caret_pos != std::string_view::npos && caret_pos > 0 && text.size() >= 2 && caret_pos < text.size()-1 )
+            {
+                if ( !is_token_start(caret_pos, text) )
+                {
+                    std::string_view caret_token_text = last_token_in(text.substr(0, caret_pos));
+                    auto & caret_item = search_tokens.emplace_back();
+                    caret_item.base_text = std::string(caret_token_text);
+                    caret_item.lowercase = case_conv.to_lower(caret_item.base_text);
+                }
             }
 
             struct search_match {

@@ -1,6 +1,8 @@
 #pragma once
 #include <slotmap/slotmap.h>
+#include <unicode/uchar.h>
 #include <unicode/ustring.h>
+#include <unicode/utypes.h>
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
@@ -82,6 +84,37 @@ namespace search
         return text | std::views::chunk_by(same_category) | std::views::filter(not_whitespace);
     }
 
+    void alpha_numeric_subs(std::string_view text, auto user) // Calls user with substrings of text starting where alpha-numerics follow non-alpha-numerics
+    {
+        enum class character_category
+        {
+            none,
+            alpha_numeric,
+            control,
+            special
+        };
+
+        character_category current_block = character_category::none;
+        UChar32 c {};
+        const char* p = text.data();
+        std::size_t length = text.size();
+        for ( std::size_t i=0; i<length; )
+        {
+            std::size_t i_start = i;
+            U8_NEXT(p, i, length, c);
+            character_category char_category = (u_isUAlphabetic(c) || u_getNumericValue(c) != U_NO_NUMERIC_VALUE) ?
+                character_category::alpha_numeric : (u_iscntrl(c) ? character_category::control : character_category::special);
+
+            if ( char_category != current_block )
+            {
+                if ( char_category == character_category::alpha_numeric && current_block != character_category::none )
+                    user(text.substr(i_start));
+
+                current_block = char_category;
+            }
+        }
+    }
+
     bool is_token_start(std::string_view::size_type pos, std::string_view text)
     {
         return pos == 0 && (text.size() == 0 || !std::isspace(text[0])) || (pos > 0 && pos < text.size() && std::isspace(text[pos-1]));
@@ -140,21 +173,27 @@ namespace search
 
         void load_prefixes(token_key_type token_key, std::string_view token_text)
         {
-            std::size_t token_text_size = token_text.size();
-            if ( token_text_size > 1 ) // tokens of size 1 or 0 have no prefix
-            {
-                std::size_t token_max_prefix_size = std::min(max_prefix_size, token_text_size-1);
-                for ( std::size_t i=0; i<token_max_prefix_size; ++i )
+            auto load_prefixes_for = [&](std::string_view text) {
+                std::size_t token_max_prefix_size = std::min(max_prefix_size, text.size()-1);
+                for ( std::size_t i=0; i<token_max_prefix_size; ++i ) // Partials starting from the beginning
                 {
                     std::size_t prefix_size = i+1;
                     auto & prefix_map = prefix_lookup[i];
-                    std::size_t prefix = prefix_value(std::string_view(&token_text[0], prefix_size));
+                    std::size_t prefix = prefix_value(std::string_view(&text[0], prefix_size));
                     auto found = prefix_map.find(prefix);
                     if ( found != prefix_map.end() )
                         found->second.push_back(token_key);
                     else
                         prefix_map.emplace(prefix, std::vector<token_key_type>{token_key});
                 }
+            };
+
+            if ( token_text.size() > 1 ) // tokens of size 1 or 0 have no prefix
+            {
+                load_prefixes_for(token_text); // Partials starting from the beginning
+                alpha_numeric_subs(token_text, [&](std::string_view text_after_special_chars) {
+                    load_prefixes_for(text_after_special_chars);
+                });
             }
         }
 
@@ -420,6 +459,7 @@ namespace search
                 std::size_t streak_count = 0;
                 std::size_t partial_match_length = 0; // If 0, the full-token was matched
                 std::size_t item_token_length = 0;
+                std::size_t offset = 0; // The offset at which a partial match was found, if any
                 
                 constexpr bool is_full() const { return partial_match_length == 0; }
                 constexpr bool is_partial() const { return partial_match_length > 0; }
@@ -487,7 +527,8 @@ namespace search
                     for ( const token_key_type matching_token_key : matching_tokens )
                     {
                         const token_type & matching_token = tokens[matching_token_key];
-                        if ( matching_token.text.starts_with(search_token_text) )
+                        auto substr_offset = matching_token.text.find(search_token_text);
+                        if ( substr_offset != std::string_view::npos )
                         {
                             const auto & owners = matching_token.owners;
                             for ( const auto & owner : owners )
@@ -500,7 +541,8 @@ namespace search
                                             .item_token_index = owner.item_token_index,
                                             .streak_count = 0,
                                             .partial_match_length = prefix_size,
-                                            .item_token_length = matching_token.text.size()
+                                            .item_token_length = matching_token.text.size(),
+                                            .offset = substr_offset
                                         }
                                     );
                                 }
@@ -511,7 +553,8 @@ namespace search
                                             .item_token_index = owner.item_token_index,
                                             .streak_count = 0,
                                             .partial_match_length = prefix_size,
-                                            .item_token_length = matching_token.text.size()
+                                            .item_token_length = matching_token.text.size(),
+                                            .offset = substr_offset
                                         }
                                     });
                                 }
@@ -670,7 +713,7 @@ namespace search
                         auto token_text = std::string_view(std::begin(*token_it), std::end(*token_it));
                         if ( match.is_partial() )
                         {
-                            std::cout << "\"" << std::string_view(&token_text[0], match.partial_match_length) << "\"/\"" << token_text << "\"";
+                            std::cout << "\"" << std::string_view(&token_text[match.offset], match.partial_match_length) << "\"/\"" << token_text << "\"";
                         }
                         else
                         {

@@ -64,6 +64,36 @@ TEST(SearchHelpers, Tokenize)
 		std::vector<std::string>{"a", "few", "different", "types", "of", "separators"});
 }
 
+TEST(SearchHelpers, AlphaNumericSubs)
+{
+	auto test_alpha_num_subs = [](std::string_view input, const std::vector<std::string> & expected_text_blocks) {
+		std::vector<std::string> text_blocks {};
+		search::alpha_numeric_subs(input, [&](auto text) {
+			text_blocks.push_back(std::string(text));
+		});
+
+		EXPECT_EQ(expected_text_blocks, text_blocks);
+	};
+	
+	test_alpha_num_subs("", {});
+	test_alpha_num_subs("a", {});
+	test_alpha_num_subs("abc", {});
+	test_alpha_num_subs("abc def", {"def"});
+	test_alpha_num_subs("[", {});
+	test_alpha_num_subs("[a", {"a"});
+	test_alpha_num_subs("[1", {"1"});
+	test_alpha_num_subs("[a1", {"a1"});
+	test_alpha_num_subs(" [a", {"a"});
+	test_alpha_num_subs(" [1", {"1"});
+	test_alpha_num_subs(" [a1", {"a1"});
+	test_alpha_num_subs("abc [a", {"a"});
+	test_alpha_num_subs("abc [1", {"1"});
+	test_alpha_num_subs("abc [a1", {"a1"});
+	test_alpha_num_subs("abc-a-2", {"a-2", "2"});
+	test_alpha_num_subs("abc-1-3", {"1-3", "3"});
+	test_alpha_num_subs("abc_a1-4", {"a1-4", "4"});
+}
+
 TEST(SearchHelpers, IsTokenStart)
 {
 	EXPECT_TRUE(search::is_token_start(0, ""));
@@ -180,6 +210,30 @@ TEST(Search, ResultRankings)
 		{"one two five", "one two six"}
 	);
 	EXPECT_EQ(2, perms);
+
+	perms = permute_and_search(
+		"r",
+		{"[Rhine]", "[Ling]", "Protoss Dragoon", "Protoss Reaver"}, // Alpha-numerics following special characters are partials
+		{"Protoss Reaver", "[Rhine]"} // Full token match on reaver should rank it above the partial match on rhine
+	);
+
+	perms = permute_and_search(
+		"l",
+		{"[Rhine]", "[Ling]", "Protoss Dragoon", "Protoss Reaver"},
+		{"[Ling]"}
+	);
+
+	perms = permute_and_search(
+		"[",
+		{"[Rhine]", "[Ling]", "Protoss Dragoon", "Protoss Reaver"},
+		{"[Ling]", "[Rhine]"}
+	);
+
+	perms = permute_and_search(
+		"d",
+		{"[Rhine]", "[Ling]", "Protoss Dragoon", "Protoss Reaver"},
+		{"Protoss Dragoon"}
+	);
 }
 
 TEST(Search, CaretPartialSearch)

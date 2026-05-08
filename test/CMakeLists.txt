@@ -19,7 +19,7 @@ include(FetchContent)
 FetchContent_Declare(
   slot-map
   GIT_REPOSITORY https://github.com/TheNitesWhoSay/slot-map.git
-  GIT_TAG 1c2aa29
+  GIT_TAG 6bbbd6a
 )
 FetchContent_MakeAvailable(slot-map)
 include_directories(${slot-map_SOURCE_DIR}/include)

@@ -55,10 +55,10 @@ Finally items can be moved to new indexes with .item_moved, this only changes th
 - [Done] Make the actual cache update logic
 - [Done] Document the cache data, cache-build logic, cache-update logic & search logic
 - [Done] Create additional tokens around the caret-position (blinking cursor)
-- Gather some example cases for special characters (e.g. \`\~\!\@\#\$\%\^\&\*\(\)\-\_\=\+\[\]\{\}\;\:\'\"\,\.\<\>\/\?), decide what search rankings should look like & how to achieve that
-- Opt-in support for logic accounting for custom character codes (e.g. <02> which maps to a particular control character and partials thereof "<", "<0", "<02")
-- Check that scoring for duplicated full-tokens in items is sensible
-- Unit tests (correct search rankings)
+- [Done] Gather some example cases for special characters (e.g. \`\~\!\@\#\$\%\^\&\*\(\)\-\_\=\+\[\]\{\}\;\:\'\"\,\.\<\>\/\?), decide what search rankings should look like & how to achieve that
+- [Skip for now] Opt-in support for logic accounting for custom character codes (e.g. <02> which maps to a particular control character and partials thereof "<", "<0", "<02")
+- [Done] Check that scoring for duplicated full-tokens in items is sensible
+- [Done] Unit tests (correct search rankings)
 - Performance tests (cache built <1000ms, search/update ops <25ms)
 - Use performance tests to help guide investigation (e.g. how big of a data set can linear/regex approaches handle while still coming in under-time)
 - Perhaps add a preference for rarer search tokens (e.g. if "the" occurs 100 times in the search set and "fae" occurs twice, a match on "fae" should be worth more than a match on "the") 

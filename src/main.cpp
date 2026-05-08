@@ -1,9 +1,6 @@
 #include <typeahead/search.h>
 #include "example-data.h"
-#include <algorithm>
-#include <cassert>
 #include <iostream>
-#include <sstream>
 
 int main()
 {
@@ -20,7 +17,7 @@ int main()
             return 1;
         
         std::cout << "\nsearching for \"" << search_text << "\n";
-        auto results = test.explain_search({.search_text = search_text});
+        auto results = test.explain_search({.search_text = search_text, .max_results = 16});
 
         std::cout << "\nsearch_scores: [\n";
         for ( auto & result : results )

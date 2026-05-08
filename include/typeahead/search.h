@@ -8,14 +8,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <ranges>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
-
-#include <iostream> // TODO: remove
 
 namespace icux
 {
@@ -402,20 +400,25 @@ namespace search
             return search_tokens;
         }
         
-        struct search_match {
-            std::size_t item_token_index;
+        struct match_offset {
+            std::size_t offset = 0; // The offset at which a partial match was found, if any
+        };
+
+        template <typename ... Ts>
+        struct search_match : Ts... {
+            std::size_t item_token_index = 0;
             std::size_t streak_count = 0;
             std::size_t partial_match_length = 0; // If 0, the full-token was matched
             std::size_t item_token_length = 0;
-            std::size_t offset = 0; // The offset at which a partial match was found, if any
                 
             constexpr bool is_full() const { return partial_match_length == 0; }
             constexpr bool is_partial() const { return partial_match_length > 0; }
         };
 
+        template <typename ... Ts>
         void find_full_search_token_matches(
             const std::vector<search_token_type> & search_tokens,
-            std::vector<std::unordered_map<item_key_type, std::vector<search_match>>> & search_token_matches)
+            std::vector<std::unordered_map<item_key_type, std::vector<search_match<Ts...>>>> & search_token_matches)
         {
             std::size_t search_token_count = search_tokens.size();
             search_token_matches.assign(search_token_count, {});
@@ -450,8 +453,8 @@ namespace search
                             }
                         }
 
-                        search_token_matches[i].emplace(owner.item_key, std::vector<search_match> {
-                            search_match{
+                        search_token_matches[i].emplace(owner.item_key, std::vector<search_match<Ts...>> {
+                            search_match<Ts...>{
                                 .item_token_index = owner.item_token_index,
                                 .streak_count = streak_count,
                                 .partial_match_length = 0,
@@ -462,10 +465,11 @@ namespace search
                 }
             }
         }
-
+        
+        template <typename ... Ts>
         void find_partial_search_token_matches(
             const std::vector<search_token_type> & search_tokens,
-            std::vector<std::unordered_map<item_key_type, std::vector<search_match>>> & search_token_matches)
+            std::vector<std::unordered_map<item_key_type, std::vector<search_match<Ts...>>>> & search_token_matches)
         {
             std::size_t search_token_count = search_tokens.size();
             for ( std::size_t i=0; i<search_token_count; ++i )
@@ -491,27 +495,29 @@ namespace search
                                 auto existing_match = search_token_matches[i].find(owner.item_key);
                                 if ( existing_match != search_token_matches[i].end() )
                                 {
-                                    existing_match->second.emplace_back(
-                                        search_match{
+                                    auto & emplaced = existing_match->second.emplace_back(
+                                        search_match<Ts...>{
                                             .item_token_index = owner.item_token_index,
                                             .streak_count = 0,
                                             .partial_match_length = prefix_size,
                                             .item_token_length = matching_token.text.size(),
-                                            .offset = substr_offset
                                         }
                                     );
+                                    if constexpr ( sizeof...(Ts) > 0 )
+                                        emplaced.offset = substr_offset;
                                 }
                                 else
                                 {
-                                    search_token_matches[i].emplace(owner.item_key, std::vector<search_match> {
-                                        search_match{
+                                    auto emplaced = search_token_matches[i].emplace(owner.item_key, std::vector<search_match<Ts...>> {
+                                        search_match<Ts...>{
                                             .item_token_index = owner.item_token_index,
                                             .streak_count = 0,
                                             .partial_match_length = prefix_size,
-                                            .item_token_length = matching_token.text.size(),
-                                            .offset = substr_offset
+                                            .item_token_length = matching_token.text.size()
                                         }
                                     });
+                                    if constexpr ( sizeof...(Ts) > 0 )
+                                        emplaced.first->second[0].offset = substr_offset;
                                 }
                             }
                         }
@@ -520,7 +526,7 @@ namespace search
             }
         }
 
-        struct score_contributor : search_match {
+        struct score_contributor : search_match<match_offset> {
             std::uint64_t score = 0;
         };
 
@@ -529,10 +535,11 @@ namespace search
             std::vector<score_contributor> contributors {};
         };
 
+        template <typename ... Ts>
         void score_search_matches(
             const std::vector<search_token_type> & search_tokens,
-            const std::vector<std::unordered_map<item_key_type, std::vector<search_match>>> & search_token_matches,
-            std::unordered_map<item_key_type, search_result> & search_result_map)
+            const std::vector<std::unordered_map<item_key_type, std::vector<search_match<Ts...>>>> & search_token_matches,
+            auto record_score)
         {
             //std::cout << "\nmatches_found: { // (item_index:item_token_index/partial_match_len) ^ streak_count\n";
             std::size_t search_token_count = search_tokens.size();
@@ -551,7 +558,7 @@ namespace search
                         if ( match.is_partial() ) // Partial-match
                         {
                             bool also_full_token = false; // This token matched this item previously as a full-search token
-                            for ( const search_match & other_match : match_set.second )
+                            for ( const search_match<Ts...> & other_match : match_set.second )
                             {
                                 if ( other_match.is_full() )
                                 {
@@ -586,22 +593,7 @@ namespace search
                         else // Non-chain full-token match
                             match_score = search_token.lowercase.size()*search_token.lowercase.size() * 10000;
 
-                        if ( match_score > 0 )
-                        {
-                            auto found = search_result_map.find(item_key);
-                            if ( found != search_result_map.end() )
-                            {
-                                found->second.score += match_score;
-                                found->second.contributors.push_back({{match}, match_score});
-                            }
-                            else
-                            {
-                                search_result_map.emplace(item_key, search_result {
-                                    .score = match_score,
-                                    .contributors = {{{match}, match_score}}
-                                });
-                            }
-                        }
+                        record_score(match_score, item_key, match);
 
                         /*if ( first )
                             first = false;
@@ -624,12 +616,60 @@ namespace search
             //std::cout << "}\n";
         }
 
-        struct scored_result_index
+        void score_search_matches(
+            const std::vector<search_token_type> & search_tokens,
+            const std::vector<std::unordered_map<item_key_type, std::vector<search_match<match_offset>>>> & search_token_matches,
+            std::unordered_map<item_key_type, search_result> & search_result_map)
+        {
+            score_search_matches(search_tokens, search_token_matches, [&](std::uint64_t match_score, item_key_type item_key, const search_match<match_offset> & match) {
+                if ( match_score > 0 )
+                {
+                    auto found = search_result_map.find(item_key);
+                    if ( found != search_result_map.end() )
+                    {
+                        found->second.score += match_score;
+                        found->second.contributors.push_back({{match}, match_score});
+                    }
+                    else
+                    {
+                        search_result_map.emplace(item_key, search_result {
+                            .score = match_score,
+                            .contributors = {{{match}, match_score}}
+                        });
+                    }
+                }
+            });
+        }
+
+        void score_search_matches(
+            const std::vector<search_token_type> & search_tokens,
+            const std::vector<std::unordered_map<item_key_type, std::vector<search_match<>>>> & search_token_matches,
+            std::unordered_map<item_key_type, std::uint64_t> & search_result_map)
+        {
+            score_search_matches(search_tokens, search_token_matches, [&](std::uint64_t match_score, item_key_type item_key, const search_match<> & match) {
+                if ( match_score > 0 )
+                {
+                    auto found = search_result_map.find(item_key);
+                    if ( found != search_result_map.end() )
+                        found->second += match_score;
+                    else
+                        search_result_map.emplace(item_key, match_score);
+                }
+            });
+        }
+
+        struct explained_scored_result_index
         {
             std::uint64_t score = 0;
             std::size_t index = 0;
             const item_type* item = nullptr;
             std::unordered_map<item_key_type, search_result>::value_type* result = nullptr;
+        };
+
+        struct scored_index
+        {
+            std::uint64_t score = 0;
+            std::size_t index = 0;
         };
 
         struct explained_result
@@ -639,16 +679,32 @@ namespace search
             std::string explanation = "";
         };
 
-        std::vector<scored_result_index> get_sorted_search_results(std::unordered_map<item_key_type, search_result> & search_result_map)
+        std::vector<explained_scored_result_index> get_sorted_search_results(std::unordered_map<item_key_type, search_result> & search_result_map)
         {
-            std::vector<scored_result_index> results {};
+            std::vector<explained_scored_result_index> results {};
             for ( auto & search_result : search_result_map )
             {
                 const item_type* item = &items[search_result.first];
                 results.emplace_back(search_result.second.score, item->index, item, &search_result);
             }
 
-            std::sort(results.begin(), results.end(), [](const scored_result_index & lhs, const scored_result_index & rhs) {
+            std::sort(results.begin(), results.end(), [](const explained_scored_result_index & lhs, const explained_scored_result_index & rhs) {
+                return lhs.score > rhs.score || (lhs.score == rhs.score && lhs.index < rhs.index);
+            });
+
+            return results;
+        }
+
+        std::vector<scored_index> get_sorted_search_results(std::unordered_map<item_key_type, std::uint64_t> & search_result_map)
+        {
+            std::vector<scored_index> results {};
+            for ( auto & search_result : search_result_map )
+            {
+                const item_type* item = &items[search_result.first];
+                results.emplace_back(search_result.second, item->index);
+            }
+
+            std::sort(results.begin(), results.end(), [](const scored_index & lhs, const scored_index & rhs) {
                 return lhs.score > rhs.score || (lhs.score == rhs.score && lhs.index < rhs.index);
             });
 
@@ -656,7 +712,7 @@ namespace search
         }
 
         std::vector<std::size_t> get_sorted_search_result_indexes(
-            const std::vector<scored_result_index> & sorted_search_results,
+            const std::vector<scored_index> & sorted_search_results,
             std::size_t max = std::numeric_limits<std::size_t>::max())
         {
             if ( max == 0 )
@@ -675,7 +731,7 @@ namespace search
         }
 
         std::vector<explained_result> get_explained_search_results(
-            const std::vector<scored_result_index> & sorted_search_results,
+            const std::vector<explained_scored_result_index> & sorted_search_results,
             std::size_t max = std::numeric_limits<std::size_t>::max())
         {
             
@@ -742,7 +798,6 @@ namespace search
                 ++item_index;
             }
 
-            // TODO: remove debug prints
             /*std::cout << "search_set: [\n";
             const auto & item_keys = items.data_keys();
             const auto & item_values = items.unordered_data();
@@ -784,30 +839,32 @@ namespace search
         std::vector<std::size_t> search_for(search_params params)
         {
             std::vector<search_token_type> search_tokens = get_search_tokens(params.search_text, params.caret_pos);
-            std::vector<std::unordered_map<item_key_type, std::vector<search_match>>> search_token_matches{}; // [search_token_index](item_iter->search_match)
+            // [search_token_index](item_iter->search_match)
+            std::vector<std::unordered_map<item_key_type, std::vector<search_match<>>>> search_token_matches{};
 
             find_full_search_token_matches(search_tokens, search_token_matches);
             find_partial_search_token_matches(search_tokens, search_token_matches);
 
-            std::unordered_map<item_key_type, search_result> search_result_map {};
+            std::unordered_map<item_key_type, std::uint64_t> search_result_map {}; // item_key->search_score
             score_search_matches(search_tokens, search_token_matches, search_result_map);
             
-            std::vector<scored_result_index> sorted_search_results = get_sorted_search_results(search_result_map);
-            return get_sorted_search_result_indexes(sorted_search_results, params.max_results);
+            std::vector<scored_index> sorted_search_results = get_sorted_search_results(search_result_map); // Only needs item index and score
+            return get_sorted_search_result_indexes(sorted_search_results, params.max_results); // Only needs the index and ordering of results
         }
 
         std::vector<explained_result> explain_search(search_params params)
         {
             std::vector<search_token_type> search_tokens = get_search_tokens(params.search_text, params.caret_pos);
-            std::vector<std::unordered_map<item_key_type, std::vector<search_match>>> search_token_matches{}; // [search_token_index](item_iter->search_match)
+            // [search_token_index](item_iter->search_match)
+            std::vector<std::unordered_map<item_key_type, std::vector<search_match<match_offset>>>> search_token_matches{};
 
             find_full_search_token_matches(search_tokens, search_token_matches);
             find_partial_search_token_matches(search_tokens, search_token_matches);
 
-            std::unordered_map<item_key_type, search_result> search_result_map {};
+            std::unordered_map<item_key_type, search_result> search_result_map {}; // Doesn't need individual contributors
             score_search_matches(search_tokens, search_token_matches, search_result_map);
             
-            std::vector<scored_result_index> sorted_search_results = get_sorted_search_results(search_result_map);
+            std::vector<explained_scored_result_index> sorted_search_results = get_sorted_search_results(search_result_map);
             return get_explained_search_results(sorted_search_results, params.max_results);
         }
 

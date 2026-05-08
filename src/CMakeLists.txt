@@ -1,6 +1,8 @@
 # Compile the search example executable
 cmake_minimum_required (VERSION 3.20)
 
+set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake")
+
 set(This SearchExample)
 
 project(${This})
@@ -8,7 +10,9 @@ project(${This})
 set(CMAKE_BUILD_PARALLEL_LEVEL)
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_CXX_STANDARD 23)
-add_compile_options(/permissive- ${ASAN})
+if ( MSVC )
+  add_compile_options(/permissive- ${ASAN})
+endif ( MSVC )
 
 include(FetchContent)
 FetchContent_Declare(

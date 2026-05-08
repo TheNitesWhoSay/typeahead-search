@@ -928,7 +928,7 @@ namespace search
         {
             for ( auto & item : items )
             {
-                if ( item.index = old_index )
+                if ( item.index == old_index )
                 {
                     item.index = new_index;
                     break;

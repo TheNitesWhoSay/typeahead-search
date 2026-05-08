@@ -172,7 +172,7 @@ TEST(Search, ResultRankings)
 		{
 			search::strings test {};
 			test.load(search_set);
-			std::vector<std::size_t> result_indexes = test.search_for(search_text);
+			std::vector<std::size_t> result_indexes = test.search_for({.search_text = search_text});
 			std::vector<std::string> results {};
 			for ( auto index : result_indexes )
 				results.push_back(search_set[index]);
@@ -242,7 +242,7 @@ TEST(Search, CaretPartialSearch)
 		search::strings test {};
 		std::vector<std::string> search_set {"zerg larva", "zerg zergling"};
 		test.load(search_set);
-		std::vector<std::size_t> result_indexes = test.search_for("zerthing");
+		std::vector<std::size_t> result_indexes = test.search_for({.search_text = "zerthing"});
 		std::vector<std::string> results {};
 		for ( auto index : result_indexes )
 			results.push_back(search_set[index]);
@@ -254,7 +254,7 @@ TEST(Search, CaretPartialSearch)
 		search::strings test {};
 		std::vector<std::string> search_set {"zerg larva", "zerg zergling"};
 		test.load(search_set);
-		std::vector<std::size_t> result_indexes = test.search_for("zerthing", 3); // "zer|thing" with caret pos after the r makes tokens "zerthing" and "zer"
+		std::vector<std::size_t> result_indexes = test.search_for({.search_text = "zerthing", .caret_pos = 3}); // "zer|thing" with caret pos after the r makes tokens "zerthing" and "zer"
 		std::vector<std::string> results {};
 		for ( auto index : result_indexes )
 			results.push_back(search_set[index]);
@@ -267,7 +267,7 @@ TEST(Search, CaretPartialSearch)
 TEST(Search, CacheUpdate)
 {
 	search::strings cache {};
-	EXPECT_TRUE(cache.search_for("f").empty());
+	EXPECT_TRUE(cache.search_for({.search_text = "f"}).empty());
 	
 	auto first_expected = std::vector<std::size_t> { 0 };
 	auto second_expected = std::vector<std::size_t> { 1 };
@@ -275,58 +275,58 @@ TEST(Search, CacheUpdate)
 	auto both_alt_expected = std::vector<std::size_t> { 1, 0 };
 
 	cache.item_added<false>(0, "first item");
-	EXPECT_EQ(cache.search_for("f"), first_expected);
-	EXPECT_EQ(cache.search_for("first"), first_expected);
-	EXPECT_EQ(cache.search_for("item"), first_expected);
-	EXPECT_EQ(cache.search_for("first item"), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "f"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "item"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first item"}), first_expected);
 
 	cache.item_removed<false>(0);
-	EXPECT_TRUE(cache.search_for("f").empty());
-	EXPECT_TRUE(cache.search_for("first").empty());
-	EXPECT_TRUE(cache.search_for("item").empty());
-	EXPECT_TRUE(cache.search_for("first item").empty());
+	EXPECT_TRUE(cache.search_for({.search_text = "f"}).empty());
+	EXPECT_TRUE(cache.search_for({.search_text = "first"}).empty());
+	EXPECT_TRUE(cache.search_for({.search_text = "item"}).empty());
+	EXPECT_TRUE(cache.search_for({.search_text = "first item"}).empty());
 	
 	cache.item_added<false>(0, "first item");
-	EXPECT_EQ(cache.search_for("f"), first_expected);
-	EXPECT_EQ(cache.search_for("first"), first_expected);
-	EXPECT_EQ(cache.search_for("item"), first_expected);
-	EXPECT_EQ(cache.search_for("first item"), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "f"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "item"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first item"}), first_expected);
 	
 	cache.item_added<false>(1, "second item");
-	EXPECT_EQ(cache.search_for("f"), first_expected);
-	EXPECT_EQ(cache.search_for("first"), first_expected);
-	EXPECT_EQ(cache.search_for("first item"), both_expected);
-	EXPECT_EQ(cache.search_for("s"), second_expected);
-	EXPECT_EQ(cache.search_for("second"), second_expected);
-	EXPECT_EQ(cache.search_for("item"), both_expected);
-	EXPECT_EQ(cache.search_for("second item"), both_alt_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "f"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first item"}), both_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "s"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "second"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "item"}), both_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "second item"}), both_alt_expected);
 
 	cache.item_removed<false>(1);
-	EXPECT_EQ(cache.search_for("f"), first_expected);
-	EXPECT_EQ(cache.search_for("first"), first_expected);
-	EXPECT_EQ(cache.search_for("item"), first_expected);
-	EXPECT_EQ(cache.search_for("first item"), first_expected);
-	EXPECT_TRUE(cache.search_for("s").empty());
-	EXPECT_TRUE(cache.search_for("second").empty());
-	EXPECT_EQ(cache.search_for("second item"), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "f"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "item"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first item"}), first_expected);
+	EXPECT_TRUE(cache.search_for({.search_text = "s"}).empty());
+	EXPECT_TRUE(cache.search_for({.search_text = "second"}).empty());
+	EXPECT_EQ(cache.search_for({.search_text = "second item"}), first_expected);
 	
 	cache.item_added<false>(1, "second item");
-	EXPECT_EQ(cache.search_for("f"), first_expected);
-	EXPECT_EQ(cache.search_for("first"), first_expected);
-	EXPECT_EQ(cache.search_for("item"), both_expected);
-	EXPECT_EQ(cache.search_for("first item"), both_expected);
-	EXPECT_EQ(cache.search_for("s"), second_expected);
-	EXPECT_EQ(cache.search_for("second"), second_expected);
-	EXPECT_EQ(cache.search_for("second item"), both_alt_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "f"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "item"}), both_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first item"}), both_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "s"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "second"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "second item"}), both_alt_expected);
 	
 	cache.item_removed<false>(0);
-	EXPECT_TRUE(cache.search_for("f").empty());
-	EXPECT_TRUE(cache.search_for("first").empty());
-	EXPECT_EQ(cache.search_for("item"), second_expected);
-	EXPECT_EQ(cache.search_for("first item"), second_expected);
-	EXPECT_EQ(cache.search_for("s"), second_expected);
-	EXPECT_EQ(cache.search_for("second"), second_expected);
-	EXPECT_EQ(cache.search_for("second item"), second_expected);
+	EXPECT_TRUE(cache.search_for({.search_text = "f"}).empty());
+	EXPECT_TRUE(cache.search_for({.search_text = "first"}).empty());
+	EXPECT_EQ(cache.search_for({.search_text = "item"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first item"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "s"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "second"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "second item"}), second_expected);
 
 }
 
@@ -340,21 +340,21 @@ TEST(Search, ItemTextUpdate)
 	auto both_alt_expected = std::vector<std::size_t> { 1, 0 };
 
 	cache.load({"first item", "second item"});
-	EXPECT_EQ(cache.search_for("f"), first_expected);
-	EXPECT_EQ(cache.search_for("first"), first_expected);
-	EXPECT_EQ(cache.search_for("item"), both_expected);
-	EXPECT_EQ(cache.search_for("first item"), both_expected);
-	EXPECT_EQ(cache.search_for("s"), second_expected);
-	EXPECT_EQ(cache.search_for("second"), second_expected);
-	EXPECT_EQ(cache.search_for("second item"), both_alt_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "f"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "item"}), both_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "first item"}), both_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "s"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "second"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "second item"}), both_alt_expected);
 
 	cache.item_text_changed(0, "qwerty common");
 	cache.item_text_changed(1, "asdf common");
-	EXPECT_EQ(cache.search_for("q"), first_expected);
-	EXPECT_EQ(cache.search_for("qwerty"), first_expected);
-	EXPECT_EQ(cache.search_for("common"), both_expected);
-	EXPECT_EQ(cache.search_for("qwerty common"), both_expected);
-	EXPECT_EQ(cache.search_for("a"), second_expected);
-	EXPECT_EQ(cache.search_for("asdf"), second_expected);
-	EXPECT_EQ(cache.search_for("asdf common"), both_alt_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "q"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "qwerty"}), first_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "common"}), both_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "qwerty common"}), both_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "a"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "asdf"}), second_expected);
+	EXPECT_EQ(cache.search_for({.search_text = "asdf common"}), both_alt_expected);
 }
